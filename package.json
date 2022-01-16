@@ -1,0 +1,18 @@
+{
+  "name": "learnwebgl",
+  "version": "1.0.0",
+  "source": "src/index.html",
+  "scripts": {
+    "start": "parcel",
+    "build": "parcel build"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "parcel": "^2.0.1"
+  },
+  "dependencies": {
+    "gl-matrix": "^3.4.3",
+    "twgl.js": "^4.21.2",
+    "webgl-utils.js": "^1.1.0"
+  }
+}
