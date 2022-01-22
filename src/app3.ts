@@ -166,25 +166,14 @@ const uniforms = {
 }
 const progarmInfo1 = twgl.createProgramInfo(gl,[vs_srouce1,fs_source1])
 const progarmInfo2 = twgl.createProgramInfo(gl,[vs2,fs2])
-// const intermediateTexture = twgl.createTexture(gl,{
-//   target:gl.TEXTURE_2D,
-//   level:0,
-//   width:600,
-//   height:600,
-//   min:gl.LINEAR,
-//   mag:gl.LINEAR,
-//   wrap:gl.CLAMP_TO_EDGE,
-//   depth:1
-// })
-const  intermediateTexture = createEmptyTexture(gl,600,600,0)
-// const targetTexture = twgl.createTexture(gl,{target:gl.TEXTURE_2D,level:0,width:600,height:600,min:gl.LINEAR,mag:gl.LINEAR})
+const targetTexture = twgl.createTexture(gl,{target:gl.TEXTURE_2D,level:0,width:600,height:600,min:gl.LINEAR,mag:gl.LINEAR})
 const bufferInfo1 = twgl.createBufferInfoFromArrays(gl, arrays)
 const bufferInfo2 = twgl.createBufferInfoFromArrays(gl,arrays2)
 // const fbo1 = twgl.createFramebufferInfo(gl,[
 //   { format: gl.DEPTH_COMPONENT },
 // ],600,600)
 const fbo1 = gl.createFramebuffer()
-// const fbo2 = gl.createFramebuffer()
+const fbo2 = gl.createFramebuffer()
 
 function main() {
   console.time('time')
@@ -197,34 +186,31 @@ function main() {
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   gl.bindFramebuffer(gl.FRAMEBUFFER,fbo1)
-      // attach the depth texture to the framebuffer
-  createDepthTexture(gl,600,600,0)
-      
-  var targetTexture = createEmptyTexture(gl,600,600,0)
-  
-      //bind frambuffer
-   const attachmentPoint = gl.COLOR_ATTACHMENT0;
-   gl.framebufferTexture2D(
-      gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, targetTexture, 0);
-  // createDepthTexture(gl,600,600,0)
-
+  //to do: figure out how to create and attach a depth textrue with twgl, or use my depth texture funtion in conjuction with
+  // twgl's texture funciton. the problem has something to do with creating the target textrue in the init and the refencing it
+  //in main
+  createDepthTexture(gl,600,600,0)  
+  const intermediateTexture = createEmptyTexture(gl,600,600,0)
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, intermediateTexture, 0);
   gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, arrays.a_vertex.data.length/3, arrays.a_position.data.length/2)
-  // //program 2
+
+  //program 2
   gl.bindFramebuffer(gl.FRAMEBUFFER,null)
-  // // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0)
   twgl.resizeCanvasToDisplaySize(gl.canvas)
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
   gl.useProgram(progarmInfo2.program)
   twgl.setBuffersAndAttributes(gl,progarmInfo2,bufferInfo2) 
   twgl.setUniforms(progarmInfo2,uniforms)
-  // // // //draw from intermediate textrue to fbo2 backed by target textrue
-  // // // gl.bindTexture(gl.TEXTURE_2D,intermediateTexture)
+  gl.bindFramebuffer(gl.FRAMEBUFFER,fbo2)
+  //draw from intermediate textrue to fbo2 backed by target textrue
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0)
+  gl.bindTexture(gl.TEXTURE_2D,intermediateTexture)
   gl.drawArrays(gl.TRIANGLES, 0, 6)
-
-  // //draw from target textrue to canvas
-  // gl.bindFramebuffer(gl.FRAMEBUFFER,null)
-  // gl.bindTexture(gl.TEXTURE_2D,targetTexture)
-  // gl.drawArrays(gl.TRIANGLES, 0, 6)
+  
+  //draw from target textrue to canvas ]
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null)
+  gl.bindTexture(gl.TEXTURE_2D,targetTexture)
+  gl.drawArrays(gl.TRIANGLES, 0, 6)
   console.timeEnd('time')
 }
 
