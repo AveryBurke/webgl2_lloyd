@@ -2,6 +2,7 @@
     "compilerOptions": {
       "experimentalDecorators": true,
       "jsxImportSource": "preact",
-      "source": "src/index.ts"
+      "source": "src/index.ts",
+      "downlevelIteration": true
     }
 }  
