@@ -37,9 +37,10 @@ uniform mediump isampler2D tex;
 out vec4 color;
 
 void main() {
+    ivec2 tex_size = textureSize(tex, 0);
     //to do: does gl_FragCoord need to be adusted for screen size or canvas size?
     int my_index = int(gl_FragCoord.x);
-    for (int x = 0; x < 10; x++) {
+    for (int x = 0; x < tex_size.x; x++) {
         ivec4 t = texelFetch(tex, ivec2(x, gl_FragCoord.y), 0);
         if (t.r == my_index) {
             color.r += float(x);
@@ -47,6 +48,7 @@ void main() {
             color.b += 1.0;
         }
     }
+    color.rg /= vec2(tex_size);
 }
 `
 
@@ -57,8 +59,9 @@ out vec2 v_position;
 uniform sampler2D summed;
 
 void main() {
+    ivec2 tex_size = textureSize(summed, 0);
     float count = 0.0;
-    for (int y = 0; y < 10; y++){
+    for (int y = 0; y < tex_size.y; y++){
         vec3 t = texelFetch(summed, ivec2(gl_VertexID, y), 0).xyz; 
         v_position += t.xy;
         count += t.z;
@@ -73,19 +76,43 @@ void main() {
   discard;
 }`
 
-function createEmptyTexture(gl, targetTextureWidth, targetTextureHeight, mipLevel) {
-    let texture = gl.createTexture()
-    gl.bindTexture(gl.TEXTURE_2D, texture)
-    gl.texImage2D(gl.TEXTURE_2D, mipLevel, gl.RGB,
-        targetTextureWidth, targetTextureHeight, 0,
-        gl.RGB, gl.UNSIGNED_BYTE, null)
 
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    return texture
+const debug_frag_shader = `#version 300 es
+precision highp float;
+
+uniform mediump isampler2D tex;
+
+out vec4 color;
+
+void main(){
+    vec4 c = vec4(texelFetch(tex, ivec2(gl_FragCoord), 0));
+    color.r = fract((c.r + 1.0) * 1.7777777);
+    color.g = fract((c.g + 1.0) * 2.1212121);
+    color.b = fract((c.b + 1.0) * 13.987654);
+    color.w = 1.0;
 }
+`
+
+const pointVertexShader = `#version 300 es
+
+in vec2 v_position;
+
+void main() {  
+    gl_Position = vec4(v_position * 2.0 - 1.0, 1, 1);
+    gl_PointSize = 5.0;
+}
+`
+
+const pointFragShader = `#version 300 es
+
+precision highp float;
+
+out vec4 color;
+
+void main() {
+    color = vec4(1, 1, 0, 1);
+}
+` 
 
 const quad = new Float32Array([-
     1,-1, 1,-1, -1,1,
@@ -114,6 +141,8 @@ const feedbackArray = {
     }
 }
 
+const numberOfSites = 1
+
 const canvas = document.querySelector('canvas')
 const gl = canvas.getContext('webgl2')
 if (!gl.getExtension("EXT_color_buffer_float")){
@@ -121,6 +150,8 @@ if (!gl.getExtension("EXT_color_buffer_float")){
 }
 const progarmInfo1 = twgl.createProgramInfo(gl, [vs1,fs1])
 const progarmInfo2 = twgl.createProgramInfo(gl,[vs2,fs2])
+const debugProgInfo = twgl.createProgramInfo(gl,[vs2,debug_frag_shader])
+const drawPoints = twgl.createProgramInfo(gl,[pointVertexShader,pointFragShader])
 const programInfo3 = twgl.createProgramInfo(gl, [feedback_source,feedback_fragment_shader], {transformFeedbackVaryings:["v_position"]})
 const bufferInfo1 = twgl.createBufferInfoFromArrays(gl,bufferArrays1)
 const bufferInfo2 = twgl.createBufferInfoFromArrays(gl,bufferArrays2)
@@ -129,7 +160,7 @@ const feedbackBuferInfo = twgl.createBufferInfoFromArrays(gl,feedbackArray)
 const fbi = twgl.createFramebufferInfo(gl,[
     //store only integer and only on the values on the red channel
     {internalFormat: gl.R32I, format: gl.RED_INTEGER, type:gl.INT, minMag: gl.NEAREST,},
-  ], 10, 10);
+  ], canvas.width, canvas.height);
 
 const sumBffer = twgl.createFramebufferInfo(gl,[
     //store floating point vec4 values
@@ -137,10 +168,7 @@ const sumBffer = twgl.createFramebufferInfo(gl,[
         internalFormat:gl.RGBA32F,
         format:gl.RGBA,
         type:gl.FLOAT,
-        minMag:gl.NEAREST}],1 ,10)
-        
-// const intermediateTexture = createEmptyTexture(gl, gl.canvas.width, gl.canvas.height, 0)
-// const targetTexture = createEmptyTexture(gl,1,canvas.height,0)
+        minMag:gl.NEAREST}],numberOfSites, canvas.height)
 
 const tf = gl.createTransformFeedback()
 gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf)
@@ -161,6 +189,14 @@ function main() {
     gl.clearBufferiv(gl.COLOR, 0, new Int32Array([-1,0,0,0]))
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+
+    //for debug 
+    gl.useProgram(debugProgInfo.program)
+    twgl.setBuffersAndAttributes(gl,debugProgInfo,bufferInfo2)
+    twgl.resizeCanvasToDisplaySize(gl.canvas)
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+    gl.bindTexture(gl.TEXTURE_2D,fbi.attachments[0])
+    gl.drawArrays(gl.TRIANGLES, 0, 6)
 
     
     // // // progam2, read from intermediateTexture, write to screan
@@ -192,6 +228,11 @@ function main() {
     
     // // // turn on using fragment shaders again
     gl.disable(gl.RASTERIZER_DISCARD);
+
+
+    gl.useProgram(drawPoints.program)
+    twgl.setBuffersAndAttributes(gl,drawPoints,feedbackBuferInfo)
+    gl.drawArrays(gl.POINTS,0,1)
 
 
     printResults(gl, feedbackBuferInfo.attribs.v_position.buffer, 'v_position')
