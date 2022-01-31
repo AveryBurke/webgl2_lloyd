@@ -1,11 +1,13 @@
 import * as twgl from "twgl.js";
+
 const vs1 = `#version 300 es
 
 in vec2 a_position;
-
+in vec3 a_instance;
+flat out int v_ID;
 void main() {
-    // gl_Position = vec4(a_position.xy - 1.0f, 1, 1);
-    gl_Position = vec4(a_position, 1, 1);
+    v_ID = gl_InstanceID;
+    gl_Position = vec4(a_instance.xy + a_position.xy, a_instance.z, 1);
 }
 `
 
@@ -13,10 +15,16 @@ const fs1 = `#version 300 es
 
 precision highp float;
 
+flat in int v_ID; 
 out ivec4 outColor;
 
 void main() {
-    outColor.r = 0;
+    // if (v_ID == 0){
+    //     outColor.r = 800;
+    // } else {
+        outColor.r = v_ID;
+    // }
+    
 }
 `
 
@@ -38,7 +46,6 @@ out vec4 color;
 
 void main() {
     ivec2 tex_size = textureSize(tex, 0);
-    //to do: does gl_FragCoord need to be adusted for screen size or canvas size?
     int my_index = int(gl_FragCoord.x);
     for (int x = 0; x < tex_size.x; x++) {
         ivec4 t = texelFetch(tex, ivec2(x, gl_FragCoord.y), 0);
@@ -113,6 +120,30 @@ void main() {
     color = vec4(1, 1, 0, 1);
 }
 ` 
+function createCone(edges:number) {
+    const vertices = new Array();
+    vertices[0] = 0;
+    vertices[1] = 0;
+    vertices[2] = -1;
+    for (let i = 0; i <= edges; i++) {
+        const angle = 2 * Math.PI * i / edges;
+        vertices[i*3 + 3] = Math.cos(angle);
+        vertices[i*3 + 4] = Math.sin(angle);
+        vertices[i*3 + 5] = 1;
+    }
+    return vertices;
+}
+
+function rand(min:number, max:number) {
+if (max === undefined) {
+  max = min;
+  min = 0;
+}
+    return min + Math.random() * (max - min);
+}
+
+const numberOfSites = 1000
+const positionData = [...new Array(2 * numberOfSites)].map((_,i) => rand(-1,1))
 
 const quad = new Float32Array([-
     1,-1, 1,-1, -1,1,
@@ -122,8 +153,12 @@ const quad = new Float32Array([-
 const bufferArrays1 = {
     a_position:{
         numComponents:2,
-        data: new Float32Array([-1, 1, -.5 , -.5, 0, .5])
-        // data: quad,
+        divisor: 1,
+        data: positionData
+    },
+    a_instance:{
+        numComponents:3,
+        data:createCone(36)
     }
 }
 
@@ -137,11 +172,15 @@ const bufferArrays2 = {
 const feedbackArray = {
     v_position:{
         numComponents:2,
-        data: new Float32Array(16)
+        data: new Float32Array(numberOfSites * 2)
     }
+    // ,
+    // index:{
+    //     numComponents:1,
+    //     data: [...new Int32Array(numberOfSites).keys()]
+    // }
 }
 
-const numberOfSites = 1
 
 const canvas = document.querySelector('canvas')
 const gl = canvas.getContext('webgl2')
@@ -160,6 +199,7 @@ const feedbackBuferInfo = twgl.createBufferInfoFromArrays(gl,feedbackArray)
 const fbi = twgl.createFramebufferInfo(gl,[
     //store only integer and only on the values on the red channel
     {internalFormat: gl.R32I, format: gl.RED_INTEGER, type:gl.INT, minMag: gl.NEAREST,},
+    {attachmentPoint:gl.DEPTH_ATTACHMENT, internalFormat:gl.DEPTH_COMPONENT24,format:gl.DEPTH_COMPONENT},
   ], canvas.width, canvas.height);
 
 const sumBffer = twgl.createFramebufferInfo(gl,[
@@ -178,17 +218,24 @@ gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
 function main() {
 
+    console.time('time')
+
     //program 1, write to intermediateTexture
     gl.useProgram(progarmInfo1.program)
     twgl.setBuffersAndAttributes(gl,progarmInfo1,bufferInfo1)
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbi.framebuffer)
+    // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TE, fbi.attachments[0], 0)
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fbi.attachments[0], 0)
     twgl.resizeCanvasToDisplaySize(gl.canvas)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
     //set the background 'color' to -1//
     gl.clearBufferiv(gl.COLOR, 0, new Int32Array([-1,0,0,0]))
-    gl.drawArrays(gl.TRIANGLES, 0, 3)
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+
+    gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, bufferArrays1.a_instance.data.length/3, bufferArrays1.a_position.data.length/2)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.disable(gl.DEPTH_TEST)
 
     //for debug 
     gl.useProgram(debugProgInfo.program)
@@ -197,7 +244,6 @@ function main() {
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
     gl.bindTexture(gl.TEXTURE_2D,fbi.attachments[0])
     gl.drawArrays(gl.TRIANGLES, 0, 6)
-
     
     // // // progam2, read from intermediateTexture, write to screan
     gl.useProgram(progarmInfo2.program)
@@ -232,24 +278,24 @@ function main() {
 
     gl.useProgram(drawPoints.program)
     twgl.setBuffersAndAttributes(gl,drawPoints,feedbackBuferInfo)
-    gl.drawArrays(gl.POINTS,0,1)
+    gl.drawArrays(gl.POINTS,0,numberOfSites)
 
 
-    printResults(gl, feedbackBuferInfo.attribs.v_position.buffer, 'v_position')
+    // printResults(gl, feedbackBuferInfo.attribs.v_position.buffer, 'v_position')
 
-    function printResults(gl, buffer, label) {
-        const results = new Float32Array(2);
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.getBufferSubData(
-            gl.ARRAY_BUFFER,
-            0,    // byte offset into GPU buffer,
-            results,
-        );
+    // function printResults(gl, buffer, label) {
+    //     const results = new Float32Array(numberOfSites * 2);
+    //     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    //     gl.getBufferSubData(
+    //         gl.ARRAY_BUFFER,
+    //         0,    // byte offset into GPU buffer,
+    //         results,
+    //     );
 
-        console.log(`${label}: ${results}`);
-    }
+    //     console.log(`${label}: ${results}`);
+    // }
 
-
+console.timeEnd('time')
 
 }
 
