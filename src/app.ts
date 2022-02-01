@@ -106,7 +106,7 @@ in vec2 v_position;
 
 void main() {  
     gl_Position = vec4(v_position * 2.0 - 1.0, 1, 1);
-    gl_PointSize = 5.0;
+    gl_PointSize = 3.0;
 }
 `
 
@@ -174,11 +174,6 @@ const feedbackArray = {
         numComponents:2,
         data: new Float32Array(numberOfSites * 2)
     }
-    // ,
-    // index:{
-    //     numComponents:1,
-    //     data: [...new Int32Array(numberOfSites).keys()]
-    // }
 }
 
 
@@ -200,7 +195,7 @@ const fbi = twgl.createFramebufferInfo(gl,[
     //store only integer and only on the values on the red channel
     {internalFormat: gl.R32I, format: gl.RED_INTEGER, type:gl.INT, minMag: gl.NEAREST,},
     {attachmentPoint:gl.DEPTH_ATTACHMENT, internalFormat:gl.DEPTH_COMPONENT24,format:gl.DEPTH_COMPONENT},
-  ], canvas.width, canvas.height);
+  ], 4096, 4096);
 
 const sumBffer = twgl.createFramebufferInfo(gl,[
     //store floating point vec4 values
@@ -208,7 +203,7 @@ const sumBffer = twgl.createFramebufferInfo(gl,[
         internalFormat:gl.RGBA32F,
         format:gl.RGBA,
         type:gl.FLOAT,
-        minMag:gl.NEAREST}],numberOfSites, canvas.height)
+        minMag:gl.NEAREST}],numberOfSites, 4096)
 
 const tf = gl.createTransformFeedback()
 gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf)
@@ -267,7 +262,7 @@ function main() {
     gl.beginTransformFeedback(gl.POINTS)
 
     gl.bindTexture(gl.TEXTURE_2D, sumBffer.attachments[0])
-    gl.drawArrays(gl.POINTS, 0, 1)
+    gl.drawArrays(gl.POINTS, 0, numberOfSites)
 
     gl.endTransformFeedback();
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
