@@ -61,7 +61,7 @@ void main() {
 
 const feedback_source = `#version 300 es
 
-out vec2 v_position;
+out vec2 a_position;
 
 uniform sampler2D summed;
 
@@ -70,10 +70,10 @@ void main() {
     float count = 0.0;
     for (int y = 0; y < tex_size.y; y++){
         vec3 t = texelFetch(summed, ivec2(gl_VertexID, y), 0).xyz; 
-        v_position += t.xy;
+        a_position += t.xy;
         count += t.z;
     }
-    v_position /= count;
+    a_position /= count;
 }`
 
 const feedback_fragment_shader = `#version 300 es
@@ -102,10 +102,10 @@ void main(){
 
 const pointVertexShader = `#version 300 es
 
-in vec2 v_position;
+in vec2 a_position;
 
 void main() {  
-    gl_Position = vec4(v_position * 2.0 - 1.0, 1, 1);
+    gl_Position = vec4(a_position * 2.0 - 1.0, 1, 1);
     gl_PointSize = 3.0;
 }
 `
@@ -119,7 +119,12 @@ out vec4 color;
 void main() {
     color = vec4(1, 1, 0, 1);
 }
-` 
+`
+const canvas = document.querySelector('canvas')
+const gl = canvas.getContext('webgl2')
+if (!gl.getExtension("EXT_color_buffer_float")){
+    alert('no extention!!!')
+} 
 function createCone(edges:number) {
     const vertices = new Array();
     vertices[0] = 0;
@@ -154,7 +159,8 @@ const bufferArrays1 = {
     a_position:{
         numComponents:2,
         divisor: 1,
-        data: positionData
+        data: positionData,
+        drawType:gl.DYNAMIC_DRAW
     },
     a_instance:{
         numComponents:3,
@@ -171,25 +177,21 @@ const bufferArrays2 = {
 
 const feedbackArray = {
     v_position:{
-        numComponents:2,
-        data: new Float32Array(numberOfSites * 2)
+        numComponents:1,
+        data: [...new Float32Array(numberOfSites).keys()]
     }
 }
 
 
-const canvas = document.querySelector('canvas')
-const gl = canvas.getContext('webgl2')
-if (!gl.getExtension("EXT_color_buffer_float")){
-    alert('no extention!!!')
-}
+
 const progarmInfo1 = twgl.createProgramInfo(gl, [vs1,fs1])
-const progarmInfo2 = twgl.createProgramInfo(gl,[vs2,fs2])
-const debugProgInfo = twgl.createProgramInfo(gl,[vs2,debug_frag_shader])
-const drawPoints = twgl.createProgramInfo(gl,[pointVertexShader,pointFragShader])
-const programInfo3 = twgl.createProgramInfo(gl, [feedback_source,feedback_fragment_shader], {transformFeedbackVaryings:["v_position"]})
-const bufferInfo1 = twgl.createBufferInfoFromArrays(gl,bufferArrays1)
-const bufferInfo2 = twgl.createBufferInfoFromArrays(gl,bufferArrays2)
-const feedbackBuferInfo = twgl.createBufferInfoFromArrays(gl,feedbackArray)
+const progarmInfo2 = twgl.createProgramInfo(gl, [vs2,fs2])
+const debugProgInfo = twgl.createProgramInfo(gl, [vs2,debug_frag_shader])
+const drawPoints = twgl.createProgramInfo(gl, [pointVertexShader,pointFragShader])
+const programInfo3 = twgl.createProgramInfo(gl, [feedback_source,feedback_fragment_shader], {transformFeedbackVaryings:["a_position"]})
+const bufferInfo1 = twgl.createBufferInfoFromArrays(gl, bufferArrays1)
+const bufferInfo2 = twgl.createBufferInfoFromArrays(gl, bufferArrays2)
+const feedbackBuferInfo = twgl.createBufferInfoFromArrays(gl, feedbackArray)
 
 const fbi = twgl.createFramebufferInfo(gl,[
     //store only integer and only on the values on the red channel
@@ -207,7 +209,7 @@ const sumBffer = twgl.createFramebufferInfo(gl,[
 
 const tf = gl.createTransformFeedback()
 gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf)
-gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, feedbackBuferInfo.attribs.v_position.buffer)
+gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, bufferInfo1.attribs.a_position.buffer)
 gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null)
 gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
@@ -230,15 +232,16 @@ function main() {
 
     gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, bufferArrays1.a_instance.data.length/3, bufferArrays1.a_position.data.length/2)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.bindBuffer(gl.ARRAY_BUFFER, null)
     gl.disable(gl.DEPTH_TEST)
 
     //for debug 
-    gl.useProgram(debugProgInfo.program)
-    twgl.setBuffersAndAttributes(gl,debugProgInfo,bufferInfo2)
-    twgl.resizeCanvasToDisplaySize(gl.canvas)
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
-    gl.bindTexture(gl.TEXTURE_2D,fbi.attachments[0])
-    gl.drawArrays(gl.TRIANGLES, 0, 6)
+    // gl.useProgram(debugProgInfo.program)
+    // twgl.setBuffersAndAttributes(gl,debugProgInfo,bufferInfo2)
+    // twgl.resizeCanvasToDisplaySize(gl.canvas)
+    // gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+    // gl.bindTexture(gl.TEXTURE_2D,fbi.attachments[0])
+    // gl.drawArrays(gl.TRIANGLES, 0, 6)
     
     // // // progam2, read from intermediateTexture, write to screan
     gl.useProgram(progarmInfo2.program)
@@ -255,9 +258,16 @@ function main() {
 
     // // // //   // // // //program 3
     gl.useProgram(programInfo3.program)
+    const va = gl.createVertexArray()
+    gl.bindVertexArray(va)
+    const buf = gl.createBuffer()
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+    gl.enableVertexAttribArray(0)
+    gl.vertexAttribPointer(0,1,gl.FLOAT,false,0,0)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(numberOfSites), gl.STATIC_DRAW)
+
     gl.enable(gl.RASTERIZER_DISCARD);
-    twgl.setBuffersAndAttributes(gl, programInfo3, feedbackBuferInfo)
-    
+
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf); 
     gl.beginTransformFeedback(gl.POINTS)
 
@@ -268,15 +278,19 @@ function main() {
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
     
     // // // turn on using fragment shaders again
-    gl.disable(gl.RASTERIZER_DISCARD);
+    gl.disable(gl.RASTERIZER_DISCARD)
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null)
+    gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
 
-    gl.useProgram(drawPoints.program)
-    twgl.setBuffersAndAttributes(gl,drawPoints,feedbackBuferInfo)
-    gl.drawArrays(gl.POINTS,0,numberOfSites)
+    // gl.useProgram(drawPoints.program)
+    // twgl.setBuffersAndAttributes(gl,drawPoints,bufferInfo1)
+    // gl.drawArrays(gl.POINTS,0,numberOfSites)
+    // gl.drawArraysInstanced(gl.POINTS,0,numberOfSites,numberOfSites)
 
 
-    // printResults(gl, feedbackBuferInfo.attribs.v_position.buffer, 'v_position')
+
+    // printResults(gl, bufferInfo1.attribs.a_position.buffer, 'v_position')
 
     // function printResults(gl, buffer, label) {
     //     const results = new Float32Array(numberOfSites * 2);
@@ -294,4 +308,26 @@ console.timeEnd('time')
 
 }
 
+
 main();
+main()
+// main()
+// main()
+// main()
+
+printResults(gl, bufferInfo1.attribs.a_position.buffer, 'v_position')
+
+function printResults(gl, buffer, label) {
+    const results = new Float32Array(numberOfSites * 2);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.getBufferSubData(
+        gl.ARRAY_BUFFER,
+        0,    // byte offset into GPU buffer,
+        results,
+    );
+
+    console.log(`${label}: ${results}`);
+}
+
+
+
