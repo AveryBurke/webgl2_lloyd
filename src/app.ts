@@ -1,6 +1,6 @@
 import * as twgl from "twgl.js";
 
-const vs1 = `#version 300 es
+const voroni_vertex_shader_source = `#version 300 es
 
 in vec2 a_position;
 in vec3 a_instance;
@@ -11,7 +11,7 @@ void main() {
 }
 `
 
-const fs1 = `#version 300 es
+const voroni_fragment_shader_srouce = `#version 300 es
 
 precision highp float;
 
@@ -19,16 +19,11 @@ flat in int v_ID;
 out ivec4 outColor;
 
 void main() {
-    // if (v_ID == 0){
-    //     outColor.r = 800;
-    // } else {
-        outColor.r = v_ID;
-    // }
-    
+    outColor.r = v_ID;   
 }
 `
 
-const vs2 = `#version 300 es
+const sum_vertex_shader_source = `#version 300 es
 
 in vec2 a_texCoord;
 
@@ -37,18 +32,18 @@ void main() {
     gl_Position = vec4(a_texCoord, 1, 1);
 }`
 
-const fs2 = `#version 300 es
+const sum_fragment_shader_source = `#version 300 es
 precision highp float;
 
-uniform mediump isampler2D tex;
+uniform mediump isampler2D voroni;
 
 out vec4 color;
 
 void main() {
-    ivec2 tex_size = textureSize(tex, 0);
+    ivec2 tex_size = textureSize(voroni, 0);
     int my_index = int(gl_FragCoord.x);
     for (int x = 0; x < tex_size.x; x++) {
-        ivec4 t = texelFetch(tex, ivec2(x, gl_FragCoord.y), 0);
+        ivec4 t = texelFetch(voroni, ivec2(x, gl_FragCoord.y), 0);
         if (t.r == my_index) {
             color.r += float(x);
             color.g += gl_FragCoord.y - 0.5f;
@@ -155,7 +150,7 @@ const quad = new Float32Array([-
     1,-1, 1,1, -1,1
 ]);
 
-const bufferArrays1 = {
+const voroniBufferArrays = {
     a_position:{
         numComponents:2,
         divisor: 1,
@@ -168,7 +163,7 @@ const bufferArrays1 = {
     }
 }
 
-const bufferArrays2 = {
+const sumBufferArrays = {
     a_texCoord:{
         numComponents:2,
         data: quad,
@@ -184,22 +179,22 @@ const feedbackArray = {
 
 
 
-const progarmInfo1 = twgl.createProgramInfo(gl, [vs1,fs1])
-const progarmInfo2 = twgl.createProgramInfo(gl, [vs2,fs2])
-const debugProgInfo = twgl.createProgramInfo(gl, [vs2,debug_frag_shader])
+const voroniProgramInfo = twgl.createProgramInfo(gl, [voroni_vertex_shader_source,voroni_fragment_shader_srouce])
+const summationProgramInfo = twgl.createProgramInfo(gl, [sum_vertex_shader_source,sum_fragment_shader_source])
+const debugProgInfo = twgl.createProgramInfo(gl, [sum_vertex_shader_source,debug_frag_shader])
 const drawPoints = twgl.createProgramInfo(gl, [pointVertexShader,pointFragShader])
-const programInfo3 = twgl.createProgramInfo(gl, [feedback_source,feedback_fragment_shader], {transformFeedbackVaryings:["a_position"]})
-const bufferInfo1 = twgl.createBufferInfoFromArrays(gl, bufferArrays1)
-const bufferInfo2 = twgl.createBufferInfoFromArrays(gl, bufferArrays2)
+const feedbackProgramInfo = twgl.createProgramInfo(gl, [feedback_source,feedback_fragment_shader], {transformFeedbackVaryings:["a_position"]})
+const voroniBufferInfo = twgl.createBufferInfoFromArrays(gl, voroniBufferArrays)
+const sumBufferInfo = twgl.createBufferInfoFromArrays(gl, sumBufferArrays)
 const feedbackBuferInfo = twgl.createBufferInfoFromArrays(gl, feedbackArray)
 
-const fbi = twgl.createFramebufferInfo(gl,[
+const voroniFrameBuffer = twgl.createFramebufferInfo(gl,[
     //store only integer and only on the values on the red channel
     {internalFormat: gl.R32I, format: gl.RED_INTEGER, type:gl.INT, minMag: gl.NEAREST,},
     {attachmentPoint:gl.DEPTH_ATTACHMENT, internalFormat:gl.DEPTH_COMPONENT24,format:gl.DEPTH_COMPONENT},
   ], 4096, 4096);
 
-const sumBffer = twgl.createFramebufferInfo(gl,[
+const sumFrameBffer = twgl.createFramebufferInfo(gl,[
     //store floating point vec4 values
     {
         internalFormat:gl.RGBA32F,
@@ -209,20 +204,19 @@ const sumBffer = twgl.createFramebufferInfo(gl,[
 
 const tf = gl.createTransformFeedback()
 gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf)
-gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, bufferInfo1.attribs.a_position.buffer)
+//bind hte voroni buffer to the transfrom feedback object
+//the feedback program will write to this buffer
+gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, voroniBufferInfo.attribs.a_position.buffer)
 gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null)
 gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
 function main() {
 
-    console.time('time')
-
-    //program 1, write to intermediateTexture
-    gl.useProgram(progarmInfo1.program)
-    twgl.setBuffersAndAttributes(gl,progarmInfo1,bufferInfo1)
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbi.framebuffer)
-    // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TE, fbi.attachments[0], 0)
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fbi.attachments[0], 0)
+    //program 1, write to voroni diagram to the integer texeture
+    gl.useProgram(voroniProgramInfo.program)
+    twgl.setBuffersAndAttributes(gl,voroniProgramInfo,voroniBufferInfo)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, voroniFrameBuffer.framebuffer)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, voroniFrameBuffer.attachments[0], 0)
     twgl.resizeCanvasToDisplaySize(gl.canvas)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
     //set the background 'color' to -1//
@@ -230,34 +224,24 @@ function main() {
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
 
-    gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, bufferArrays1.a_instance.data.length/3, bufferArrays1.a_position.data.length/2)
+    gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, voroniBufferArrays.a_instance.data.length/3, voroniBufferArrays.a_position.data.length/2)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.bindBuffer(gl.ARRAY_BUFFER, null)
     gl.disable(gl.DEPTH_TEST)
-
-    //for debug 
-    // gl.useProgram(debugProgInfo.program)
-    // twgl.setBuffersAndAttributes(gl,debugProgInfo,bufferInfo2)
-    // twgl.resizeCanvasToDisplaySize(gl.canvas)
-    // gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
-    // gl.bindTexture(gl.TEXTURE_2D,fbi.attachments[0])
-    // gl.drawArrays(gl.TRIANGLES, 0, 6)
     
-    // // // progam2, read from intermediateTexture, write to screan
-    gl.useProgram(progarmInfo2.program)
-    twgl.setBuffersAndAttributes(gl,progarmInfo2,bufferInfo2)
+    //progam2, read from the integer textrue and write to the sum texture (floating point textrue)
+    gl.useProgram(summationProgramInfo.program)
+    twgl.setBuffersAndAttributes(gl,summationProgramInfo,sumBufferInfo)
     twgl.resizeCanvasToDisplaySize(gl.canvas)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
-
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, sumBffer.framebuffer)
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sumBffer.attachments[0], 0)
-    gl.bindTexture(gl.TEXTURE_2D, fbi.attachments[0])
+    gl.bindFramebuffer(gl.FRAMEBUFFER, sumFrameBffer.framebuffer)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sumFrameBffer.attachments[0], 0)
+    gl.bindTexture(gl.TEXTURE_2D, voroniFrameBuffer.attachments[0])
     gl.drawArrays(gl.TRIANGLES, 0, 6)
     gl.bindFramebuffer(gl.FRAMEBUFFER,null)
 
-    // // // //   // // // //program 3
-    gl.useProgram(programInfo3.program)
+    //program 3, read from the sum textrue and use transfrom feedback to write to the buffer for the voroni program
+    gl.useProgram(feedbackProgramInfo.program)
     const va = gl.createVertexArray()
     gl.bindVertexArray(va)
     const buf = gl.createBuffer()
@@ -271,51 +255,44 @@ function main() {
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf); 
     gl.beginTransformFeedback(gl.POINTS)
 
-    gl.bindTexture(gl.TEXTURE_2D, sumBffer.attachments[0])
+    gl.bindTexture(gl.TEXTURE_2D, sumFrameBffer.attachments[0])
     gl.drawArrays(gl.POINTS, 0, numberOfSites)
 
     gl.endTransformFeedback();
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
     
-    // // // turn on using fragment shaders again
+    //turn on using fragment shaders again
     gl.disable(gl.RASTERIZER_DISCARD)
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null)
     gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
-
-    // gl.useProgram(drawPoints.program)
-    // twgl.setBuffersAndAttributes(gl,drawPoints,bufferInfo1)
-    // gl.drawArrays(gl.POINTS,0,numberOfSites)
-    // gl.drawArraysInstanced(gl.POINTS,0,numberOfSites,numberOfSites)
-
-
-
-    // printResults(gl, bufferInfo1.attribs.a_position.buffer, 'v_position')
-
-    // function printResults(gl, buffer, label) {
-    //     const results = new Float32Array(numberOfSites * 2);
-    //     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    //     gl.getBufferSubData(
-    //         gl.ARRAY_BUFFER,
-    //         0,    // byte offset into GPU buffer,
-    //         results,
-    //     );
-
-    //     console.log(`${label}: ${results}`);
-    // }
-
-console.timeEnd('time')
-
 }
 
+console.time('loop')
+for (let i = 0; i < 5; i++) {
+    main()
+}
+console.timeEnd('loop')
+debugReder()
 
-main();
-main()
-// main()
-// main()
-// main()
+function debugReder() {
+    gl.useProgram(debugProgInfo.program)
+    twgl.setBuffersAndAttributes(gl,debugProgInfo,sumBufferInfo)
+    twgl.resizeCanvasToDisplaySize(gl.canvas)
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+    gl.bindTexture(gl.TEXTURE_2D,voroniFrameBuffer.attachments[0])
+    gl.drawArrays(gl.TRIANGLES, 0, 6)
+    gl.bindBuffer(gl.ARRAY_BUFFER,null)
+    gl.bindTexture(gl.TEXTURE_2D,null)
 
-printResults(gl, bufferInfo1.attribs.a_position.buffer, 'v_position')
+    gl.useProgram(drawPoints.program)
+    twgl.setBuffersAndAttributes(gl,drawPoints,voroniBufferInfo)
+    gl.drawArrays(gl.POINTS,0,numberOfSites)
+    gl.drawArraysInstanced(gl.POINTS,0,numberOfSites,numberOfSites)
+    gl.bindBuffer(gl.ARRAY_BUFFER,null)
+}
+
+// printResults(gl, voroniBufferInfo.attribs.a_position.buffer, 'v_position')
 
 function printResults(gl, buffer, label) {
     const results = new Float32Array(numberOfSites * 2);
