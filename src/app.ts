@@ -42,15 +42,19 @@ out vec4 color;
 void main() {
     ivec2 tex_size = textureSize(voroni, 0);
     int my_index = int(gl_FragCoord.x);
+
+    float xSum = 0.0;
+    int count = 0;
+    float yCoord = gl_FragCoord.y;
     for (int x = 0; x < tex_size.x; x++) {
         ivec4 t = texelFetch(voroni, ivec2(x, gl_FragCoord.y), 0);
         if (t.r == my_index) {
-            color.r += float(x);
-            color.g += gl_FragCoord.y - 0.5f;
-            color.b += 1.0;
+            xSum += float(x) + 0.5f;//<--why does this need to be corrected for .5 ?
+            count += 1;
         }
     }
-    color.rg /= vec2(tex_size);
+    float ySum = float(count) * yCoord;
+    color = vec4(xSum / float(tex_size.x), ySum / float(tex_size.y), float(count), 1.0);
 }
 `
 
@@ -120,8 +124,8 @@ void main() {
     color = vec4(1, 1, 0, 1);
 }
 `
-const textureWidth = 500
-const textureHeight = 500
+const textureWidth = 512
+const textureHeight = 512
 const display:HTMLCanvasElement = document.querySelector('#display')
 
 display.width = textureWidth
@@ -157,7 +161,8 @@ if (max === undefined) {
 }
 
 const numberOfSites = 1000
-const positionData = [...new Array(2 * numberOfSites)].map((_,i) => Math.sqrt(Math.random()))
+// const positionData = [...new Array(2 * numberOfSites)].map((_,i) => Math.sqrt(Math.random())/2 + .25)
+const positionData = [...new Array(2 * numberOfSites)].map((_,i) => rand(0,1))
 const quad = new Float32Array([-
     1,-1, 1,-1, -1,1,
     1,-1, 1,1, -1,1
@@ -277,10 +282,12 @@ function main() {
 console.time('loop')
 gl.finish()
 document.querySelector('button').addEventListener('click',function () {
-    main()
+    for (let i = 0; i < 50; i++) {
+        main()
+    }
     step(gl, voroniBufferInfo.attribs.a_position.buffer, 'v_position')
     let current = +this.innerText
-    this.innerText = `${++current}`
+    this.innerText = `${50 + current}`
 })
 
 // console.timeEnd('loop')
@@ -289,12 +296,18 @@ document.querySelector('button').addEventListener('click',function () {
 function debugRender() {
     gl.useProgram(debugProgInfo.program)
     twgl.setBuffersAndAttributes(gl,debugProgInfo,sumBufferInfo)
-    // twgl.resizeCanvasToDisplaySized(gl.canvas)
+    twgl.resizeCanvasToDisplaySize(gl.canvas)
     gl.viewport(0, 0, textureWidth, textureHeight)
     gl.bindTexture(gl.TEXTURE_2D,voroniFrameBuffer.attachments[0])
     gl.drawArrays(gl.TRIANGLES, 0, 6)
     gl.bindBuffer(gl.ARRAY_BUFFER,null)
     gl.bindTexture(gl.TEXTURE_2D,null)
+
+    // gl.useProgram(drawPoints.program)
+    // twgl.setBuffersAndAttributes(gl,drawPoints,voroniBufferInfo)
+    // gl.drawArrays(gl.POINTS,0,numberOfSites)
+    // gl.drawArraysInstanced(gl.POINTS,0,numberOfSites,numberOfSites)
+    // gl.bindBuffer(gl.ARRAY_BUFFER,null)
 }
 
 
