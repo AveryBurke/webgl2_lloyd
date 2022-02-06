@@ -63,6 +63,7 @@ const feedback_source = `#version 300 es
 out vec2 a_position;
 
 uniform sampler2D summed;
+uniform vec2 a_origin;
 
 void main() {
     ivec2 tex_size = textureSize(summed, 0);
@@ -73,6 +74,11 @@ void main() {
         count += t.z;
     }
     a_position /= count;
+    //if the sum shader wasn't able to locate the cell,
+    //put the seed back into the buffer
+    if (count == 0.0){
+        a_position = a_origin;
+    }
 }`
 
 const feedback_fragment_shader = `#version 300 es
@@ -124,8 +130,8 @@ void main() {
     color = vec4(1, 1, 0, 1);
 }
 `
-const textureWidth = 512
-const textureHeight = 512
+const textureWidth = 324
+const textureHeight = 324
 const display:HTMLCanvasElement = document.querySelector('#display')
 
 display.width = textureWidth
@@ -161,8 +167,15 @@ if (max === undefined) {
 }
 
 const numberOfSites = 1000
-// const positionData = [...new Array(2 * numberOfSites)].map((_,i) => Math.sqrt(Math.random())/2 + .25)
-const positionData = [...new Array(2 * numberOfSites)].map((_,i) => rand(0,1))
+const x = (a:number,r:number) => r * Math.cos(a)
+const y = (a:number,r:number) => r * Math.sin(a)
+const positionData = [...new Array(2 * numberOfSites)].map((_,i) => {
+    const n = Math.random()
+    const a = n * 2 * Math.PI
+    const r = .5 * Math.sqrt(n)
+    return i % 2 === 0 ? x(a,r) + .5: y(a,r) + .5
+})
+console.log('positions: ', positionData)
 const quad = new Float32Array([-
     1,-1, 1,-1, -1,1,
     1,-1, 1,1, -1,1
@@ -188,6 +201,13 @@ const sumBufferArrays = {
     }
 }
 
+const originsArray = {
+    a_origins:{
+        numComponents:2,
+        data: positionData,
+    }
+}
+
 const voroniProgramInfo = twgl.createProgramInfo(gl, [voroni_vertex_shader_source,voroni_fragment_shader_srouce])
 // const voroniProgramDisplayInfo = twgl.createProgramInfo(displayGl, [voroni_vertex_shader_source,voroni_fragment_shader_srouce])
 const summationProgramInfo = twgl.createProgramInfo(gl, [sum_vertex_shader_source,sum_fragment_shader_source])
@@ -196,6 +216,7 @@ const drawPoints = twgl.createProgramInfo(gl, [pointVertexShader,pointFragShader
 const feedbackProgramInfo = twgl.createProgramInfo(gl, [feedback_source,feedback_fragment_shader], {transformFeedbackVaryings:["a_position"]})
 const voroniBufferInfo = twgl.createBufferInfoFromArrays(gl, voroniBufferArrays)
 const sumBufferInfo = twgl.createBufferInfoFromArrays(gl, sumBufferArrays)
+const originsBufferInfor = twgl.createBufferInfoFromArrays(gl,originsArray)
 
 const voroniFrameBuffer = twgl.createFramebufferInfo(gl,[
     //store only integer and only on the values on the red channel
@@ -253,6 +274,7 @@ function main() {
 
     //program 3, read from the sum textrue and use transfrom feedback to write to the buffer for the voroni program
     gl.useProgram(feedbackProgramInfo.program)
+    twgl.setBuffersAndAttributes(gl,feedbackProgramInfo,originsBufferInfor)
     const va = gl.createVertexArray()
     gl.bindVertexArray(va)
     const buf = gl.createBuffer()
@@ -261,6 +283,7 @@ function main() {
     gl.vertexAttribPointer(0,1,gl.FLOAT,false,0,0)
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(numberOfSites), gl.STATIC_DRAW)
 
+  
     gl.enable(gl.RASTERIZER_DISCARD);
 
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf); 
@@ -280,17 +303,17 @@ function main() {
 }
 
 console.time('loop')
-gl.finish()
+const numberOfSetps = 1
 document.querySelector('button').addEventListener('click',function () {
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < numberOfSetps; i++) {
         main()
     }
     step(gl, voroniBufferInfo.attribs.a_position.buffer, 'v_position')
     let current = +this.innerText
-    this.innerText = `${50 + current}`
+    this.innerText = `${numberOfSetps + current}`
 })
 
-// console.timeEnd('loop')
+console.timeEnd('loop')
 
 
 function debugRender() {
