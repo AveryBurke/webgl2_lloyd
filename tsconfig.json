@@ -3,6 +3,7 @@
       "experimentalDecorators": true,
       "jsxImportSource": "preact",
       "source": "src/index.ts",
-      "downlevelIteration": true
+      "downlevelIteration": true,
+      "target": "ESNEXT"
     }
 }  

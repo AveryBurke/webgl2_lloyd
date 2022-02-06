@@ -7,7 +7,7 @@ in vec3 a_instance;
 flat out int v_ID;
 void main() {
     v_ID = gl_InstanceID;
-    gl_Position = vec4(a_instance.xy + a_position.xy, a_instance.z, 1);
+    gl_Position = vec4(a_instance.xy + a_position.xy * 2.0 - 1.0, a_instance.z, 1);
 }
 `
 
@@ -28,8 +28,8 @@ const sum_vertex_shader_source = `#version 300 es
 in vec2 a_texCoord;
 
 void main() {
-    // gl_Position = vec4(a_texCoord * 2.0f - 1.0f, 1, 1);
     gl_Position = vec4(a_texCoord, 1, 1);
+    // gl_Position = vec4(a_texCoord, 1, 1);
 }`
 
 const sum_fragment_shader_source = `#version 300 es
@@ -88,10 +88,14 @@ out vec4 color;
 
 void main(){
     vec4 c = vec4(texelFetch(tex, ivec2(gl_FragCoord), 0));
-    color.r = fract((c.r + 1.0) * 1.7777777);
-    color.g = fract((c.g + 1.0) * 2.1212121);
-    color.b = fract((c.b + 1.0) * 13.987654);
-    color.w = 1.0;
+    if (c.r == -1.0){
+        color = vec4(.01, .9, 0, 1);
+    } else {
+        color.r = fract((c.r + 1.0) * 1.7777777);
+        color.g = fract((c.g + 1.0) * 2.1212121);
+        color.b = fract((c.b + 1.0) * 13.987654);
+        color.w = 1.0;
+    }
 }
 `
 
@@ -101,6 +105,7 @@ in vec2 a_position;
 
 void main() {  
     gl_Position = vec4(a_position * 2.0 - 1.0, 1, 1);
+    // gl_Position = vec4(a_position, 1, 1);
     gl_PointSize = 3.0;
 }
 `
@@ -115,8 +120,17 @@ void main() {
     color = vec4(1, 1, 0, 1);
 }
 `
-const canvas = document.querySelector('canvas')
-const gl = canvas.getContext('webgl2')
+const textureWidth = 500
+const textureHeight = 500
+const display:HTMLCanvasElement = document.querySelector('#display')
+
+display.width = textureWidth
+display.height = textureHeight
+// const displayGl = display.getContext('webgl2')
+// const gl = document.createElement('canvas').getContext('webgl2')
+const gl = display.getContext('webgl2')
+console.log("i'm still here")
+
 if (!gl.getExtension("EXT_color_buffer_float")){
     alert('no extention!!!')
 } 
@@ -143,8 +157,7 @@ if (max === undefined) {
 }
 
 const numberOfSites = 1000
-const positionData = [...new Array(2 * numberOfSites)].map((_,i) => rand(-1,1))
-
+const positionData = [...new Array(2 * numberOfSites)].map((_,i) => Math.sqrt(Math.random()))
 const quad = new Float32Array([-
     1,-1, 1,-1, -1,1,
     1,-1, 1,1, -1,1
@@ -170,29 +183,20 @@ const sumBufferArrays = {
     }
 }
 
-const feedbackArray = {
-    v_position:{
-        numComponents:1,
-        data: [...new Float32Array(numberOfSites).keys()]
-    }
-}
-
-
-
 const voroniProgramInfo = twgl.createProgramInfo(gl, [voroni_vertex_shader_source,voroni_fragment_shader_srouce])
+// const voroniProgramDisplayInfo = twgl.createProgramInfo(displayGl, [voroni_vertex_shader_source,voroni_fragment_shader_srouce])
 const summationProgramInfo = twgl.createProgramInfo(gl, [sum_vertex_shader_source,sum_fragment_shader_source])
 const debugProgInfo = twgl.createProgramInfo(gl, [sum_vertex_shader_source,debug_frag_shader])
 const drawPoints = twgl.createProgramInfo(gl, [pointVertexShader,pointFragShader])
 const feedbackProgramInfo = twgl.createProgramInfo(gl, [feedback_source,feedback_fragment_shader], {transformFeedbackVaryings:["a_position"]})
 const voroniBufferInfo = twgl.createBufferInfoFromArrays(gl, voroniBufferArrays)
 const sumBufferInfo = twgl.createBufferInfoFromArrays(gl, sumBufferArrays)
-const feedbackBuferInfo = twgl.createBufferInfoFromArrays(gl, feedbackArray)
 
 const voroniFrameBuffer = twgl.createFramebufferInfo(gl,[
     //store only integer and only on the values on the red channel
     {internalFormat: gl.R32I, format: gl.RED_INTEGER, type:gl.INT, minMag: gl.NEAREST,},
     {attachmentPoint:gl.DEPTH_ATTACHMENT, internalFormat:gl.DEPTH_COMPONENT24,format:gl.DEPTH_COMPONENT},
-  ], 4096, 4096);
+  ], textureWidth, textureHeight);
 
 const sumFrameBffer = twgl.createFramebufferInfo(gl,[
     //store floating point vec4 values
@@ -200,7 +204,7 @@ const sumFrameBffer = twgl.createFramebufferInfo(gl,[
         internalFormat:gl.RGBA32F,
         format:gl.RGBA,
         type:gl.FLOAT,
-        minMag:gl.NEAREST}],numberOfSites, 4096)
+        minMag:gl.NEAREST}],numberOfSites, textureHeight)
 
 const tf = gl.createTransformFeedback()
 gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf)
@@ -210,30 +214,32 @@ gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, voroniBufferInfo.attribs.a_po
 gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null)
 gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
-function main() {
 
+function main() {
     //program 1, write to voroni diagram to the integer texeture
     gl.useProgram(voroniProgramInfo.program)
     twgl.setBuffersAndAttributes(gl,voroniProgramInfo,voroniBufferInfo)
     gl.bindFramebuffer(gl.FRAMEBUFFER, voroniFrameBuffer.framebuffer)
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, voroniFrameBuffer.attachments[0], 0)
-    twgl.resizeCanvasToDisplaySize(gl.canvas)
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+    // twgl.resizeCanvasToDisplaySize(gl.canvas)
+    gl.viewport(0, 0, textureWidth, textureHeight)
+    // console.log('gl canvas: ', gl.canvas.width)
     //set the background 'color' to -1//
     gl.clearBufferiv(gl.COLOR, 0, new Int32Array([-1,0,0,0]))
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
-
+    gl.clearDepth(1)
+    gl.clear(gl.DEPTH_BUFFER_BIT)
     gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, voroniBufferArrays.a_instance.data.length/3, voroniBufferArrays.a_position.data.length/2)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.bindBuffer(gl.ARRAY_BUFFER, null)
     gl.disable(gl.DEPTH_TEST)
     
-    //progam2, read from the integer textrue and write to the sum texture (floating point textrue)
+    // // // progam2, read from the integer textrue and write to the sum texture (floating point textrue)
     gl.useProgram(summationProgramInfo.program)
     twgl.setBuffersAndAttributes(gl,summationProgramInfo,sumBufferInfo)
-    twgl.resizeCanvasToDisplaySize(gl.canvas)
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+    // twgl.resizeCanvasToDisplaySize(gl.canvas)
+    gl.viewport(0, 0, numberOfSites, textureHeight)
     gl.bindFramebuffer(gl.FRAMEBUFFER, sumFrameBffer.framebuffer)
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sumFrameBffer.attachments[0], 0)
     gl.bindTexture(gl.TEXTURE_2D, voroniFrameBuffer.attachments[0])
@@ -269,42 +275,46 @@ function main() {
 }
 
 console.time('loop')
-for (let i = 0; i < 5; i++) {
+gl.finish()
+document.querySelector('button').addEventListener('click',function () {
     main()
-}
-console.timeEnd('loop')
-debugReder()
+    step(gl, voroniBufferInfo.attribs.a_position.buffer, 'v_position')
+    let current = +this.innerText
+    this.innerText = `${++current}`
+})
 
-function debugReder() {
+// console.timeEnd('loop')
+
+
+function debugRender() {
     gl.useProgram(debugProgInfo.program)
     twgl.setBuffersAndAttributes(gl,debugProgInfo,sumBufferInfo)
-    twgl.resizeCanvasToDisplaySize(gl.canvas)
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+    // twgl.resizeCanvasToDisplaySized(gl.canvas)
+    gl.viewport(0, 0, textureWidth, textureHeight)
     gl.bindTexture(gl.TEXTURE_2D,voroniFrameBuffer.attachments[0])
     gl.drawArrays(gl.TRIANGLES, 0, 6)
     gl.bindBuffer(gl.ARRAY_BUFFER,null)
     gl.bindTexture(gl.TEXTURE_2D,null)
-
-    gl.useProgram(drawPoints.program)
-    twgl.setBuffersAndAttributes(gl,drawPoints,voroniBufferInfo)
-    gl.drawArrays(gl.POINTS,0,numberOfSites)
-    gl.drawArraysInstanced(gl.POINTS,0,numberOfSites,numberOfSites)
-    gl.bindBuffer(gl.ARRAY_BUFFER,null)
 }
 
-// printResults(gl, voroniBufferInfo.attribs.a_position.buffer, 'v_position')
 
-function printResults(gl, buffer, label) {
+function printResults(gl:WebGL2RenderingContext, buffer, label) {
     const results = new Float32Array(numberOfSites * 2);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.getBufferSubData(
         gl.ARRAY_BUFFER,
         0,    // byte offset into GPU buffer,
         results,
-    );
-
+    )
+    const numberOfNans = results.filter(n => Number.isNaN(n)).length
+    console.log("this many nans: ", numberOfNans)
+    console.log('there are this many missing points: ', numberOfNans/2)
     console.log(`${label}: ${results}`);
+    gl.bindBuffer(gl.ARRAY_BUFFER,null)
 }
 
-
+function step(gl:WebGL2RenderingContext, buffer, label) {
+    printResults(gl, buffer, label)
+    debugRender()
+}
 
