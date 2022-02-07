@@ -11,7 +11,11 @@
     "parcel": "^2.0.1"
   },
   "dependencies": {
+    "@types/d3": "^7.1.0",
+    "d3": "^7.3.0",
     "gl-matrix": "^3.4.3",
+    "svg-path-bbox": "^1.0.2",
+    "svg-path-properties": "^1.0.11",
     "twgl.js": "^4.21.2",
     "webgl-utils.js": "^1.1.0"
   }

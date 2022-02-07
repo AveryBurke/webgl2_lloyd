@@ -1,4 +1,7 @@
 import * as twgl from "twgl.js";
+import pathToPoints from "./pathToPoints";
+import getBoundingBox from "./getBoundingBox";
+import { arc } from "d3-shape";
 
 const voroni_vertex_shader_source = `#version 300 es
 
@@ -127,11 +130,13 @@ precision highp float;
 out vec4 color;
 
 void main() {
-    color = vec4(1, 1, 0, 1);
+    color = vec4(.0, .8, 0, 1);
 }
 `
+
 const textureWidth = 324
 const textureHeight = 324
+
 const display:HTMLCanvasElement = document.querySelector('#display')
 
 display.width = textureWidth
@@ -139,7 +144,6 @@ display.height = textureHeight
 // const displayGl = display.getContext('webgl2')
 // const gl = document.createElement('canvas').getContext('webgl2')
 const gl = display.getContext('webgl2')
-console.log("i'm still here")
 
 if (!gl.getExtension("EXT_color_buffer_float")){
     alert('no extention!!!')
@@ -166,7 +170,7 @@ if (max === undefined) {
     return min + Math.random() * (max - min);
 }
 
-const numberOfSites = 1000
+const numberOfSites = 500
 const x = (a:number,r:number) => r * Math.cos(a)
 const y = (a:number,r:number) => r * Math.sin(a)
 const positionData = [...new Array(2 * numberOfSites)].map((_,i) => {
@@ -175,7 +179,31 @@ const positionData = [...new Array(2 * numberOfSites)].map((_,i) => {
     const r = .5 * Math.sqrt(n)
     return i % 2 === 0 ? x(a,r) + .5: y(a,r) + .5
 })
-console.log('positions: ', positionData)
+
+const arcInfo = {
+    startAngle:Math.PI,
+    endAngle:90 * Math.PI/180,
+    innerRadius:50,
+    outerRadius:200
+}
+
+const a = arc()
+const svgPath = a(arcInfo)
+const [cx, cy] = a.centroid(arcInfo) 
+const bBox = getBoundingBox(svgPath)
+const [normlizedCX, normalizedCY] = [cx/bBox.bw, cy/bBox.bh]
+const boarder = pathToPoints(1000,svgPath).reduce<number[]>((flatPoints,pair) => {
+    const [x,y] = pair
+    flatPoints = [...flatPoints,x/bBox.bw,y/bBox.bh]
+    return flatPoints
+},[])
+const nucleus = [...new Array(numberOfSites * 2)].map((_,i) => {
+    const a = Math.random() * 2 * Math.PI
+    const r = ((arcInfo.outerRadius - arcInfo.innerRadius)/bBox.bh)/2.75 * Math.sqrt(Math.random())//<--something's wrong with the way I'm calculating the radius
+    return i % 2 === 0 ? x(a,r) + normlizedCX : y(a,r) + normalizedCY
+})
+const points = [...nucleus,...boarder]
+
 const quad = new Float32Array([-
     1,-1, 1,-1, -1,1,
     1,-1, 1,1, -1,1
@@ -185,7 +213,7 @@ const voroniBufferArrays = {
     a_position:{
         numComponents:2,
         divisor: 1,
-        data: positionData,
+        data: points,
         drawType:gl.DYNAMIC_DRAW
     },
     a_instance:{
@@ -208,8 +236,14 @@ const originsArray = {
     }
 }
 
+const boarderBufferArray = {
+    a_position:{
+        numComponents:2,
+        data:points
+    }
+}
+
 const voroniProgramInfo = twgl.createProgramInfo(gl, [voroni_vertex_shader_source,voroni_fragment_shader_srouce])
-// const voroniProgramDisplayInfo = twgl.createProgramInfo(displayGl, [voroni_vertex_shader_source,voroni_fragment_shader_srouce])
 const summationProgramInfo = twgl.createProgramInfo(gl, [sum_vertex_shader_source,sum_fragment_shader_source])
 const debugProgInfo = twgl.createProgramInfo(gl, [sum_vertex_shader_source,debug_frag_shader])
 const drawPoints = twgl.createProgramInfo(gl, [pointVertexShader,pointFragShader])
@@ -217,6 +251,7 @@ const feedbackProgramInfo = twgl.createProgramInfo(gl, [feedback_source,feedback
 const voroniBufferInfo = twgl.createBufferInfoFromArrays(gl, voroniBufferArrays)
 const sumBufferInfo = twgl.createBufferInfoFromArrays(gl, sumBufferArrays)
 const originsBufferInfor = twgl.createBufferInfoFromArrays(gl,originsArray)
+const boarderBufferInfo = twgl.createBufferInfoFromArrays(gl,boarderBufferArray)
 
 const voroniFrameBuffer = twgl.createFramebufferInfo(gl,[
     //store only integer and only on the values on the red channel
@@ -261,7 +296,7 @@ function main() {
     gl.bindBuffer(gl.ARRAY_BUFFER, null)
     gl.disable(gl.DEPTH_TEST)
     
-    // // // progam2, read from the integer textrue and write to the sum texture (floating point textrue)
+    //progam2, read from the integer textrue and write to the sum texture (floating point textrue)
     gl.useProgram(summationProgramInfo.program)
     twgl.setBuffersAndAttributes(gl,summationProgramInfo,sumBufferInfo)
     // twgl.resizeCanvasToDisplaySize(gl.canvas)
@@ -281,7 +316,7 @@ function main() {
     gl.bindBuffer(gl.ARRAY_BUFFER, buf)
     gl.enableVertexAttribArray(0)
     gl.vertexAttribPointer(0,1,gl.FLOAT,false,0,0)
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(numberOfSites), gl.STATIC_DRAW)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points.length), gl.STATIC_DRAW)
 
   
     gl.enable(gl.RASTERIZER_DISCARD);
@@ -303,7 +338,7 @@ function main() {
 }
 
 console.time('loop')
-const numberOfSetps = 1
+const numberOfSetps = 50
 document.querySelector('button').addEventListener('click',function () {
     for (let i = 0; i < numberOfSetps; i++) {
         main()
@@ -313,7 +348,21 @@ document.querySelector('button').addEventListener('click',function () {
     this.innerText = `${numberOfSetps + current}`
 })
 
-console.timeEnd('loop')
+function drawBoarder() {
+    console.log('drawing points')
+    gl.useProgram(drawPoints.program)
+    console.log('drawing points with the following program: ', drawPoints,)
+    twgl.setBuffersAndAttributes(gl,drawPoints,boarderBufferInfo)
+    twgl.resizeCanvasToDisplaySize(gl.canvas)
+    gl.viewport(0,0,gl.canvas.width,gl.canvas.height)
+    gl.bindTexture(gl.TEXTURE_2D,null)
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null)
+    gl.drawArrays(gl.POINTS,0,boarderBufferArray.a_position.data.length/2)
+    gl.bindBuffer(gl.ARRAY_BUFFER,null)
+}
+
+// drawBoarder()
+// console.timeEnd('loop')
 
 
 function debugRender() {
@@ -329,13 +378,13 @@ function debugRender() {
     // gl.useProgram(drawPoints.program)
     // twgl.setBuffersAndAttributes(gl,drawPoints,voroniBufferInfo)
     // gl.drawArrays(gl.POINTS,0,numberOfSites)
-    // gl.drawArraysInstanced(gl.POINTS,0,numberOfSites,numberOfSites)
+    // // gl.drawArraysInstanced(gl.POINTS,0,numberOfSites,numberOfSites)
     // gl.bindBuffer(gl.ARRAY_BUFFER,null)
 }
 
 
 function printResults(gl:WebGL2RenderingContext, buffer, label) {
-    const results = new Float32Array(numberOfSites * 2);
+    const results = new Float32Array(points.length);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.getBufferSubData(
         gl.ARRAY_BUFFER,
