@@ -1,7 +1,6 @@
 import * as twgl from "twgl.js";
-import pathToPoints from "./pathToPoints";
-import getBoundingBox from "./getBoundingBox";
-import { arc } from "d3-shape";
+import randomPizza from "./randomPizza";
+
 
 const voroni_vertex_shader_source = `#version 300 es
 
@@ -32,7 +31,6 @@ in vec2 a_texCoord;
 
 void main() {
     gl_Position = vec4(a_texCoord, 1, 1);
-    // gl_Position = vec4(a_texCoord, 1, 1);
 }`
 
 const sum_fragment_shader_source = `#version 300 es
@@ -63,10 +61,11 @@ void main() {
 
 const feedback_source = `#version 300 es
 
+in vec2 a_origins;
+
 out vec2 a_position;
 
 uniform sampler2D summed;
-uniform vec2 a_origin;
 
 void main() {
     ivec2 tex_size = textureSize(summed, 0);
@@ -80,7 +79,7 @@ void main() {
     //if the sum shader wasn't able to locate the cell,
     //put the seed back into the buffer
     if (count == 0.0){
-        a_position = a_origin;
+        a_position = a_origins;
     }
 }`
 
@@ -118,7 +117,6 @@ in vec2 a_position;
 
 void main() {  
     gl_Position = vec4(a_position * 2.0 - 1.0, 1, 1);
-    // gl_Position = vec4(a_position, 1, 1);
     gl_PointSize = 3.0;
 }
 `
@@ -141,8 +139,7 @@ const display:HTMLCanvasElement = document.querySelector('#display')
 
 display.width = textureWidth
 display.height = textureHeight
-// const displayGl = display.getContext('webgl2')
-// const gl = document.createElement('canvas').getContext('webgl2')
+
 const gl = display.getContext('webgl2')
 
 if (!gl.getExtension("EXT_color_buffer_float")){
@@ -162,47 +159,25 @@ function createCone(edges:number) {
     return vertices;
 }
 
-function rand(min:number, max:number) {
-if (max === undefined) {
-  max = min;
-  min = 0;
-}
-    return min + Math.random() * (max - min);
-}
 
-const numberOfSites = 500
-const x = (a:number,r:number) => r * Math.cos(a)
-const y = (a:number,r:number) => r * Math.sin(a)
-const positionData = [...new Array(2 * numberOfSites)].map((_,i) => {
-    const n = Math.random()
-    const a = n * 2 * Math.PI
-    const r = .5 * Math.sqrt(n)
-    return i % 2 === 0 ? x(a,r) + .5: y(a,r) + .5
-})
+const numberOfSites = 1000
 
-const arcInfo = {
-    startAngle:Math.PI,
-    endAngle:90 * Math.PI/180,
-    innerRadius:50,
-    outerRadius:200
-}
+const slices = 'ABCDEFGHIJKLMN'
+const rings = 'OPQRSTUVWXYZ'
 
-const a = arc()
-const svgPath = a(arcInfo)
-const [cx, cy] = a.centroid(arcInfo) 
-const bBox = getBoundingBox(svgPath)
-const [normlizedCX, normalizedCY] = [cx/bBox.bw, cy/bBox.bh]
-const boarder = pathToPoints(1000,svgPath).reduce<number[]>((flatPoints,pair) => {
-    const [x,y] = pair
-    flatPoints = [...flatPoints,x/bBox.bw,y/bBox.bh]
-    return flatPoints
+const pizza = randomPizza(numberOfSites,slices,rings,8,8)
+const boarders = pizza.reduce<number[]>((normalizedPoints,arc)=> {
+    const {boarder} = arc
+    const normalziedBoarder = boarder.reduce<number[]>((norm, pair) => [...norm,(pair[0]/1000) + .5, (pair[1]/1000) + .5],[])
+    return [...normalizedPoints,...normalziedBoarder]
 },[])
-const nucleus = [...new Array(numberOfSites * 2)].map((_,i) => {
-    const a = Math.random() * 2 * Math.PI
-    const r = ((arcInfo.outerRadius - arcInfo.innerRadius)/bBox.bh)/2.75 * Math.sqrt(Math.random())//<--something's wrong with the way I'm calculating the radius
-    return i % 2 === 0 ? x(a,r) + normlizedCX : y(a,r) + normalizedCY
-})
-const points = [...nucleus,...boarder]
+
+const nucleui = pizza.reduce<number[]>((nucleui,arc) => [...nucleui,...arc.nucleus],[])
+
+function GPUVoroni(gl:WebGL2RenderingContext,nuclei:number[],boarder:[]) {
+    
+}
+const points = [...nucleui,...boarders]
 
 const quad = new Float32Array([-
     1,-1, 1,-1, -1,1,
@@ -232,7 +207,7 @@ const sumBufferArrays = {
 const originsArray = {
     a_origins:{
         numComponents:2,
-        data: positionData,
+        data: new Float32Array([...nucleui]),
     }
 }
 
@@ -252,6 +227,8 @@ const voroniBufferInfo = twgl.createBufferInfoFromArrays(gl, voroniBufferArrays)
 const sumBufferInfo = twgl.createBufferInfoFromArrays(gl, sumBufferArrays)
 const originsBufferInfor = twgl.createBufferInfoFromArrays(gl,originsArray)
 const boarderBufferInfo = twgl.createBufferInfoFromArrays(gl,boarderBufferArray)
+
+const vaoInfo = twgl.createVertexArrayInfo(gl,feedbackProgramInfo,originsBufferInfor)
 
 const voroniFrameBuffer = twgl.createFramebufferInfo(gl,[
     //store only integer and only on the values on the red channel
@@ -306,19 +283,12 @@ function main() {
     gl.bindTexture(gl.TEXTURE_2D, voroniFrameBuffer.attachments[0])
     gl.drawArrays(gl.TRIANGLES, 0, 6)
     gl.bindFramebuffer(gl.FRAMEBUFFER,null)
+    gl.bindBuffer(gl.ARRAY_BUFFER,null)
 
     //program 3, read from the sum textrue and use transfrom feedback to write to the buffer for the voroni program
     gl.useProgram(feedbackProgramInfo.program)
-    twgl.setBuffersAndAttributes(gl,feedbackProgramInfo,originsBufferInfor)
-    const va = gl.createVertexArray()
-    gl.bindVertexArray(va)
-    const buf = gl.createBuffer()
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf)
-    gl.enableVertexAttribArray(0)
-    gl.vertexAttribPointer(0,1,gl.FLOAT,false,0,0)
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points.length), gl.STATIC_DRAW)
+    twgl.setBuffersAndAttributes(gl,feedbackProgramInfo,vaoInfo)
 
-  
     gl.enable(gl.RASTERIZER_DISCARD);
 
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf); 
@@ -326,10 +296,9 @@ function main() {
 
     gl.bindTexture(gl.TEXTURE_2D, sumFrameBffer.attachments[0])
     gl.drawArrays(gl.POINTS, 0, numberOfSites)
-
     gl.endTransformFeedback();
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
-    
+    gl.bindVertexArray(null)
     //turn on using fragment shaders again
     gl.disable(gl.RASTERIZER_DISCARD)
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null)
@@ -337,8 +306,8 @@ function main() {
 
 }
 
-console.time('loop')
-const numberOfSetps = 50
+// console.time('loop')
+const numberOfSetps = 100
 document.querySelector('button').addEventListener('click',function () {
     for (let i = 0; i < numberOfSetps; i++) {
         main()
@@ -351,7 +320,6 @@ document.querySelector('button').addEventListener('click',function () {
 function drawBoarder() {
     console.log('drawing points')
     gl.useProgram(drawPoints.program)
-    console.log('drawing points with the following program: ', drawPoints,)
     twgl.setBuffersAndAttributes(gl,drawPoints,boarderBufferInfo)
     twgl.resizeCanvasToDisplaySize(gl.canvas)
     gl.viewport(0,0,gl.canvas.width,gl.canvas.height)
@@ -361,7 +329,7 @@ function drawBoarder() {
     gl.bindBuffer(gl.ARRAY_BUFFER,null)
 }
 
-// drawBoarder()
+drawBoarder()    
 // console.timeEnd('loop')
 
 
@@ -377,23 +345,27 @@ function debugRender() {
 
     // gl.useProgram(drawPoints.program)
     // twgl.setBuffersAndAttributes(gl,drawPoints,voroniBufferInfo)
-    // gl.drawArrays(gl.POINTS,0,numberOfSites)
-    // // gl.drawArraysInstanced(gl.POINTS,0,numberOfSites,numberOfSites)
+    // gl.bindFramebuffer(gl.FRAMEBUFFER,null)
+    // gl.clearDepth(1)
+    // gl.clear(gl.DEPTH_BUFFER_BIT)
+    // gl.drawArrays(gl.POINTS, 0, numberOfSites)
+    // // gl.drawArraysInstanced(gl.POINTS, 0, voroniBufferArrays.a_position.data.length/3, numberOfSites)
     // gl.bindBuffer(gl.ARRAY_BUFFER,null)
 }
 
 
 function printResults(gl:WebGL2RenderingContext, buffer, label) {
-    const results = new Float32Array(points.length);
+    const results = new Float32Array(numberOfSites * 2);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.getBufferSubData(
         gl.ARRAY_BUFFER,
         0,    // byte offset into GPU buffer,
         results,
     )
+    console.log('there are this many results: ', results.length)
     const numberOfNans = results.filter(n => Number.isNaN(n)).length
     console.log("this many nans: ", numberOfNans)
-    console.log('there are this many missing points: ', numberOfNans/2)
+    console.log('and this many missing points: ', numberOfNans/2)
     console.log(`${label}: ${results}`);
     gl.bindBuffer(gl.ARRAY_BUFFER,null)
 }

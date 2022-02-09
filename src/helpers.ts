@@ -20,4 +20,8 @@ if (max === undefined) {
 return min + Math.random() * (max - min);
 }
 
-export {createCone,rand}
+function roundRand(min:number,max:number) {
+  return Math.round(rand(min,max))
+}
+
+export {createCone,rand,roundRand}
