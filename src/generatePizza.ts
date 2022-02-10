@@ -93,7 +93,7 @@ const generatePizza = (
 
         return arcs.map(arc => {
             const path = arcGenerator(arc) 
-            const boarder = pathToPoints(500,path)//<--the number of boarder points required can be optomozed
+            const boarder = pathToPoints(100,path)//<--the number of boarder points must be optomized, this is a bottle neck
             return({
                 ...arc,
                 path,
