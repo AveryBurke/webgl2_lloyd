@@ -11,6 +11,7 @@ function randomPizza(count:number,slices:string,rings:string,maxslices:number,ma
         const ringValue = ringSet[roundRand(0,ringSet.length - 1)]
         return ({sliceValue,ringValue})
     })
-    return generatePizza({data,sliceSet,ringSet,radius:500})
+
+    return generatePizza({data,sliceSet,ringSet,radius:300})
 }
 export default randomPizza

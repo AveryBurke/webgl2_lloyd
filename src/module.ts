@@ -301,6 +301,11 @@ function vornoiModual():typeof mod {
 
     }
 
+    mod.numberOfCycles = function (value:number) {
+        numberOfCycles = value
+        return mod
+    }
+
     mod.nuclei = function (value:number[]):typeof mod {
         nuclei = value
         if (typeof updateNuclei === 'function') updateNuclei()

@@ -21,7 +21,7 @@ return min + Math.random() * (max - min);
 }
 
 function roundRand(min:number,max:number) {
-  return Math.round(rand(min,max))
+  return Math.floor(rand(min,max))
 }
 
 export {createCone,rand,roundRand}

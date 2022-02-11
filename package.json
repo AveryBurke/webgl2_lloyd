@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "source": "src/index.html",
   "scripts": {
-    "start": "parcel",
+    "start": "parcel --no-cache",
     "build": "parcel build"
   },
   "license": "MIT",

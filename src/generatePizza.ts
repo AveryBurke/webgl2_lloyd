@@ -1,6 +1,7 @@
 import pathToPoints from "./pathToPoints";
 import { arc, pie } from "d3-shape";
 import { rollup } from "d3-array";
+import { roundRand } from "./helpers";
 
 const generatePizza = (
     {data,sliceSet,ringSet, radius}:
@@ -9,11 +10,9 @@ const generatePizza = (
     ringSet:string[]
     radius:number
     }) => {
-    
         const sliceCount = rollup(data, v => v.length, d => d.sliceValue)
         const ringCount = rollup(data, v => v.length, d => d.ringValue)
         const arcCount = rollup(data, v => v.length, d => d.sliceValue, d => d.ringValue)
-
         const sliceAngles = getSliceAngles(sliceSet)
         const ringHeight = radius/(ringSet.length)
         const arcs = generateArcs(sliceSet,ringSet)
@@ -33,9 +32,9 @@ const generatePizza = (
                     const outerRadius = (j + 1) * ringHeight
                     return ({
                         id:`${slice}_${ring}`,
-                        arcCount: arcCount.get(slice).get(ring),
-                        sliceCount:sliceCount.get(slice),
-                        ringCount:ringCount.get(ring),
+                        arcCount:arcCount.get(slice) ? arcCount.get(slice).get(ring) ? arcCount.get(slice).get(ring) : 0 : 0,
+                        sliceCount:sliceCount.get(slice) || 0,
+                        ringCount:ringCount.get(ring) || 0,
                         slice,
                         ring,
                         startAngle,
@@ -54,46 +53,46 @@ const generatePizza = (
         function generateNucleus(arc,centroid:[number,number]):number[] {
             const {innerRadius, outerRadius, arcCount, startAngle, endAngle} = arc
             const theta = endAngle - startAngle
-            const width = (360/(radius/2 * theta)) * (2 * Math.PI * radius)  
+            const width = theta * outerRadius 
             const r = Math.min((outerRadius - innerRadius),width)/2
-            //d3's arc centriod funciton appears to fail when the arc is a circel
+            const d = 2 * r 
+            const numberOfCentroids = Math.floor((width/d))
+            const centroids:[number,number][] = []
+            // d3's arc.cenroid funciton appears to fail when the arc is a circle
             const isACircle = innerRadius === 0 && Math.round(theta * 180/Math.PI) === 360
-            const isARing = !isACircle && Math.round(theta * 180/Math.PI) === 360
             const [x, y] = !isACircle ? centroid : [0,0]
-            const secondCentroid = [-centroid[0],-centroid[1]]
-            const normalizeBy = isACircle ? radius : 2 * radius
-            if (!isARing){
-                return [...new Array(arcCount)].reduce<number[]>((points,_) => {
-                    const pt_angle = Math.random() * 2 * Math.PI;
-                    const pt_radius_sq = Math.random() * r * r;
-                    const pt_x = x + Math.sqrt(pt_radius_sq) * Math.cos(pt_angle);
-                    const pt_y = y + Math.sqrt(pt_radius_sq) * Math.sin(pt_angle);
-                    return [...points,pt_x/normalizeBy + .5,pt_y/normalizeBy + .5]
-                },[])
+            const centroidR = Math.hypot(x,y)
+            // const centroidR = Math.sqrt((x * x) + (y * y))
+            const centroidTheta = Math.atan2(y,x)
+            if (!isACircle){
+                for (let i = 0; i < numberOfCentroids; i++) {
+                    //fan out the nuclie along the arc
+                    const leftOrRight = i % 2 === 0 ? 1 : -1
+                    const cx = centroidR * (Math.cos(centroidTheta + ((i * d) * leftOrRight)))
+                    const cy = centroidR * (Math.sin(centroidTheta + ((i * d) * leftOrRight)))
+                    centroids.push([cx,cy])
+                }
             } else {
-                const topNuclius = [...new Array(Math.floor(arcCount/2))].reduce<number[]>((points,_) => {
+                centroids.push([x,y])
+            }       
+            // const secondCentroid = [-centroid[0],-centroid[1]]
+            const normalizeBy = isACircle ? radius : 2 * radius
+            return [...new Array(arcCount)].reduce<number[]>((points,_) => {  
+                    const c = roundRand(0,centroids.length > 0 ? centroids.length : centroids.length)
+                    const [x,y] = centroids[c]
                     const pt_angle = Math.random() * 2 * Math.PI;
                     const pt_radius_sq = Math.random() * r * r;
                     const pt_x = x + Math.sqrt(pt_radius_sq) * Math.cos(pt_angle);
                     const pt_y = y + Math.sqrt(pt_radius_sq) * Math.sin(pt_angle);
                     return [...points,pt_x/normalizeBy + .5,pt_y/normalizeBy + .5]
-                },[])
-                const bottomNuclius = [...new Array(Math.ceil(arcCount/2))].reduce<number[]>((points,_) => {
-                    const pt_angle = Math.random() * 2 * Math.PI;
-                    const pt_radius_sq = Math.random() * r * r;
-                    const pt_x = secondCentroid[0] + Math.sqrt(pt_radius_sq) * Math.cos(pt_angle);
-                    const pt_y = secondCentroid[1] + Math.sqrt(pt_radius_sq) * Math.sin(pt_angle);
-                    return [...points,pt_x/normalizeBy + .5,pt_y/normalizeBy + .5]
-                },[])
-
-                return [...topNuclius,...bottomNuclius]
-            }
-           
+                },[])           
         }
 
         return arcs.map(arc => {
+            const {endAngle,startAngle} = arc
+            const theta = endAngle - startAngle
             const path = arcGenerator(arc) 
-            const boarder = pathToPoints(100,path)//<--the number of boarder points must be optomized, this is a bottle neck
+            const boarder = pathToPoints(arc.arcCount > 0 ? 100 : 0,path)//<--the number of boarder points must be optomized, this is a bottle neck
             return({
                 ...arc,
                 path,
